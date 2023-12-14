@@ -15,7 +15,7 @@ from sys import platform
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", default="medium", help="Model to use",
+    parser.add_argument("--model", default="base", help="Model to use",
                         choices=["tiny", "base", "small", "medium", "large"])
     parser.add_argument("--non_english", action='store_true',
                         help="Don't use the english model.")
@@ -62,9 +62,7 @@ def main():
     # Load / Download model
     model = args.model
     if args.model != "large" and not args.non_english:
-        model = model + ".en"
-    
-    
+        model = model + ".en"  
 
     #audio_model = whisper.load_model(model)
     from faster_whisper import WhisperModel
@@ -121,11 +119,15 @@ def main():
                 result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
                 text = result['text'].strip()
                 '''
-                result, info = audio_model.transcribe(audio_np)
+                if args.non_english:
+                    _language = "ar"
+                else:
+                    _language = "en"
+
+                result, info = audio_model.transcribe(audio_np, vad_filter=True, language=_language)
                 text = ''
                 for segment in result:
                     text += segment.text
-                
 
                 # If we detected a pause between recordings, add a new item to our transcription.
                 # Otherwise edit the existing one.
