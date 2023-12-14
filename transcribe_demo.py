@@ -63,7 +63,12 @@ def main():
     model = args.model
     if args.model != "large" and not args.non_english:
         model = model + ".en"
-    audio_model = whisper.load_model(model)
+    
+    
+
+    #audio_model = whisper.load_model(model)
+    from faster_whisper import WhisperModel
+    audio_model = WhisperModel(model, device="cpu", compute_type="int8")
 
     record_timeout = args.record_timeout
     phrase_timeout = args.phrase_timeout
@@ -87,7 +92,7 @@ def main():
     recorder.listen_in_background(source, record_callback, phrase_time_limit=record_timeout)
 
     # Cue the user that we're ready to go.
-    print("Model loaded.\n")
+    print("Model loaded. Listening...\n")
 
     while True:
         try:
@@ -112,8 +117,15 @@ def main():
                 audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
                 # Read the transcription.
+                '''
                 result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
                 text = result['text'].strip()
+                '''
+                result, info = audio_model.transcribe(audio_np)
+                text = ''
+                for segment in result:
+                    text += segment.text
+                
 
                 # If we detected a pause between recordings, add a new item to our transcription.
                 # Otherwise edit the existing one.
@@ -133,10 +145,12 @@ def main():
                 sleep(0.25)
         except KeyboardInterrupt:
             break
-
+    '''
     print("\n\nTranscription:")
     for line in transcription:
         print(line)
+    '''
+    print("\n\nStopped listening.")
 
 
 if __name__ == "__main__":
