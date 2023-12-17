@@ -4,9 +4,8 @@ import argparse
 import os
 import numpy as np
 import speech_recognition as sr
-import whisper
-import torch
-
+from faster_whisper import WhisperModel
+from correction import TextCorrection
 from datetime import datetime, timedelta
 from queue import Queue
 from time import sleep
@@ -62,10 +61,7 @@ def main():
     # Load / Download model
     model = args.model
     if args.model != "large" and not args.non_english:
-        model = model + ".en"  
-
-    #audio_model = whisper.load_model(model)
-    from faster_whisper import WhisperModel
+        model = model + ".en" 
     audio_model = WhisperModel(model, device="cpu", compute_type="int8")
 
     record_timeout = args.record_timeout
@@ -92,8 +88,9 @@ def main():
     # Cue the user that we're ready to go.
     print("Model loaded. Listening...\n")
 
-    while True:
-        try:
+    #while True:
+    try:
+        while True:
             now = datetime.utcnow()
             # Pull raw recorded audio from the queue.
             if not data_queue.empty():
@@ -115,38 +112,46 @@ def main():
                 audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
 
                 # Read the transcription.
-                '''
-                result = audio_model.transcribe(audio_np, fp16=torch.cuda.is_available())
-                text = result['text'].strip()
-                '''
                 if args.non_english:
-                    _language = "ar"
+                    _language = 'ar'
                 else:
-                    _language = "en"
+                    _language = 'en'
 
                 result, info = audio_model.transcribe(audio_np, vad_filter=True, language=_language)
                 text = ''
                 for segment in result:
                     text += segment.text
 
+                # proofread arabic to eliminate spelling errors to improve accuracy
+                original_text = text
+                if _language == 'ar':
+                    words = text.split()
+                    corrected_words = []
+                    for word in words:
+                        corrected_word = TextCorrection().correction(word)[0]
+                        corrected_words.append(word)
+                    text = ' '.join(corrected_words)
+                
                 # If we detected a pause between recordings, add a new item to our transcription.
-                # Otherwise edit the existing one.
+                # Otherwise edit the existing one.                
                 if phrase_complete:
                     transcription.append(text)
                 else:
                     transcription[-1] = text
-
+                
                 # Clear the console to reprint the updated transcription.
                 os.system('cls' if os.name=='nt' else 'clear')
+                print('original:', original_text)
+                print('corrected:', text)
                 for line in transcription:
                     print(line)
                 # Flush stdout.
                 print('', end='', flush=True)
 
                 # Infinite loops are bad for processors, must sleep.
-                sleep(0.25)
-        except KeyboardInterrupt:
-            break
+                sleep(0.001)
+    except KeyboardInterrupt:
+        pass
     '''
     print("\n\nTranscription:")
     for line in transcription:
