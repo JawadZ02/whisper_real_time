@@ -13,14 +13,15 @@ from sys import platform
 
 
 def main():
+    print('Running transcription script!!!')
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="base", help="Model to use",
                         choices=["tiny", "base", "small", "medium", "large"])
     parser.add_argument("--non_english", action='store_true',
                         help="Don't use the english model.")
-    parser.add_argument("--energy_threshold", default=1000,
+    parser.add_argument("--energy_threshold", default=500,
                         help="Energy level for mic to detect.", type=int)
-    parser.add_argument("--record_timeout", default=2,
+    parser.add_argument("--record_timeout", default=4,
                         help="How real time the recording is in seconds.", type=float)
     parser.add_argument("--phrase_timeout", default=3,
                         help="How much empty space between recordings before we "
@@ -64,6 +65,16 @@ def main():
         model = model + ".en" 
     audio_model = WhisperModel(model, device="cpu", compute_type="int8")
 
+    # Create text correction instance for (arabic) spell check
+    '''
+    tc = TextCorrection()
+    # testing
+    word = 'طولابي'
+    corrected_word = tc.correction(word)[0]
+    print(corrected_word)
+    import sys
+    sys.exit()
+    '''
     record_timeout = args.record_timeout
     phrase_timeout = args.phrase_timeout
 
@@ -91,9 +102,10 @@ def main():
     #while True:
     try:
         while True:
-            now = datetime.utcnow()
+            #now = datetime.utcnow()
             # Pull raw recorded audio from the queue.
             if not data_queue.empty():
+                '''
                 phrase_complete = False
                 # If enough time has passed between recordings, consider the phrase complete.
                 # Clear the current working audio buffer to start over with the new data.
@@ -101,7 +113,7 @@ def main():
                     phrase_complete = True
                 # This is the last time we received new audio data from the queue.
                 phrase_time = now
-                
+                '''
                 # Combine audio data from queue
                 audio_data = b''.join(data_queue.queue)
                 data_queue.queue.clear()
@@ -123,15 +135,20 @@ def main():
                     text += segment.text
 
                 # proofread arabic to eliminate spelling errors to improve accuracy
+                '''
                 original_text = text
                 if _language == 'ar':
                     words = text.split()
                     corrected_words = []
                     for word in words:
-                        corrected_word = TextCorrection().correction(word)[0]
+                        corrected_word = tc.correction(word)[0]
                         corrected_words.append(word)
                     text = ' '.join(corrected_words)
-                
+                print('original:', original_text)
+                print('corrected:', text)
+                '''
+                print(text)
+                '''
                 # If we detected a pause between recordings, add a new item to our transcription.
                 # Otherwise edit the existing one.                
                 if phrase_complete:
@@ -147,7 +164,7 @@ def main():
                     print(line)
                 # Flush stdout.
                 print('', end='', flush=True)
-
+                '''
                 # Infinite loops are bad for processors, must sleep.
                 sleep(0.001)
     except KeyboardInterrupt:
@@ -157,7 +174,7 @@ def main():
     for line in transcription:
         print(line)
     '''
-    print("\n\nStopped listening.")
+    print("\nStopped listening.")
 
 
 if __name__ == "__main__":
