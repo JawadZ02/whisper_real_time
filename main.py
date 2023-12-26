@@ -1,183 +1,71 @@
-import customtkinter
-import subprocess
+# GUI implementation with Kivi
+
+from kivy.app import App
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+
 from threading import Thread
 from threading import Event
-import queue
-import time
+import sys
+from transcription_kivy import transcription
 
-runningProcess = None
 
-def enqueue_output(out, err, queue):
-    try:
-        for line in iter(out.readline, b''):
-            queue.put(line)
-    except Exception as e:
-        print(f"Error reading from stdout: {e}")
-    finally:
-        try:
-            out.close()
-        except Exception as e:
-            print(f"Error closing stdout: {e}")
+class transcriptionApp(App):
+    def build(self):
+        self.stop_event = Event()
 
-    #out.close()
-    #runningProcess.wait()
+        self.window = GridLayout()
+        self.window.cols = 1
+        #self.window.size_hint = (0.4, 0.8) # width of main frame is 40%, height 80%
+        self.window.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
+        self.window.padding = (400, 150)
+        self.window.spacing = 20
 
-def update_text_en(output_queue): # runningProcess argument removed
-    '''
-    # Read the output of the process line by line
-    while True:
-        output_line = runningProcess.stdout.readline()
-        if output_line == '' and runningProcess.poll() is not None:
-            break  # No more output and the process has finished
+        self.label = Label(text='Select transcription language.')
+        self.window.add_widget(self.label)
 
-        # Insert the new line into the Text widget
-        transcriptionBox.insert('end', ' ' + output_line)
+        self.buttonEng = Button(text='English', size_hint=(0.4,0.6))
+        self.buttonEng.bind(on_press=self.runEnglishTranscription)
+        self.window.add_widget(self.buttonEng)
 
-        # Scroll to the bottom to show the latest output
-        transcriptionBox.yview('end')
+        self.buttonAr = Button(text='Arabic', size_hint=(0.4,0.6))
+        self.buttonAr.bind(on_press=self.runArabicTranscription)
+        self.window.add_widget(self.buttonAr)
 
-        # Allow Tkinter to update the window
-        root.update()
+        self.buttonStop = Button(text='Stop transcription', size_hint=(0.8,0.6))
+        self.buttonStop.bind(on_press=self.stopTranscription)
+        self.window.add_widget(self.buttonStop)
 
-    # Optionally, wait for the process to complete and get any remaining output
-    remaining_output, _ = runningProcess.communicate()
-    if remaining_output:
-        transcriptionBox.insert('end', ' ' + remaining_output)
-    '''
-    while not stop_flag.is_set():
-        try:
-            output_line = output_queue.get_nowait()
-        except queue.Empty:
-            # Queue is empty, sleep for a short time to avoid busy waiting
-            time.sleep(0.01)
-            continue
+        self.buttonExit = Button(text='Exit', size_hint=(0.8,0.6))
+        self.buttonExit.bind(on_press=self.exitProgram)
+        self.window.add_widget(self.buttonExit)
 
-        if runningProcess.poll() is not None:
-            break  # The process has finished
+        self.transcriptionBox = TextInput(size_hint=(0.4,0.6), font_name='ARIAL.TTF')
+        self.window.add_widget(self.transcriptionBox)
 
-        # Insert the new line into the Text widget
-        transcriptionBox.insert('end', ' ' + output_line)
+        self.t = transcription(self.stop_event, self)
 
-        # Scroll to the bottom to show the latest output
-        transcriptionBox.yview('end')
+        return self.window
 
-        # Allow Tkinter to update the window
-        root.update()
+    def stopTranscription(self, instance):
+        self.stop_event.set()
 
-    # Optionally, wait for the process to complete and get any remaining output
-    remaining_output, _ = runningProcess.communicate()
-    if remaining_output:
-        transcriptionBox.insert('end', ' ' + remaining_output)
+    def runEnglishTranscription(self, instance):
+        Thread(target=self.t.transcribe, daemon=True).start()
 
-def update_text_ar(runningProcess):
-    # Read the output of the process line by line
-    while True:
-        output_line = runningProcess.stdout.readline()
-        if output_line == '' and runningProcess.poll() is not None:
-            break  # No more output and the process has finished
+    def runArabicTranscription(self, instance):
+        Thread(target=lambda:self.t.transcribe('base', True), daemon=True).start()
+    
+    def exitProgram(self, instance):
+        self.stopTranscription(instance)
+        #sys.exit()
+        App.get_running_app().stop()
 
-        # Insert the new line into the Text widget
-        transcriptionBox.insert(1.0, ' ' + ' '.join(reversed(output_line.split(' '))))
+    def updateTranscriptionBox(self, text):
+        self.transcriptionBox.text = text
 
-        # Scroll to the bottom to show the latest output
-        transcriptionBox.yview('end')
-
-        # Allow Tkinter to update the window
-        root.update()
-
-    # Optionally, wait for the process to complete and get any remaining output
-    remaining_output, _ = runningProcess.communicate()
-    if remaining_output:
-        transcriptionBox.insert(1.0, ' ' + ' '.join(reversed(remaining_output.split(' '))))
-
-# Use a flag to signal the update thread to stop when the process is terminated
-stop_flag = Event()
-
-def runEnglishTranscription():
-    buttonEng.configure(border_width=1)
-    buttonAr.configure(state='disabled')
-    global runningProcess
-    runningProcess = subprocess.Popen(
-        ["python", "transcribe_demo.py"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,  # Line buffered, so we can read output line by line
-        universal_newlines=True  # Ensure newline conversion
-    )
-
-    #output_line = runningProcess.stdout.readline()
-    #print(output_line)
-    #Thread(target=update_text_en, args=(runningProcess,), daemon=True).start()
-
-    # Use a queue to communicate between threads
-    output_queue = queue.Queue()
-
-    # Start the thread to read and update the text periodically
-    Thread(target=enqueue_output, args=(runningProcess.stdout, runningProcess.stderr, output_queue), daemon=True).start()
-
-    # Start the thread to periodically check the queue and update the text widget
-    Thread(target=update_text_en, args=(output_queue,), daemon=True).start()
-
-def runArabicTranscription():
-    buttonAr.configure(border_width=1)
-    buttonEng.configure(state='disabled')
-    global runningProcess
-    runningProcess = subprocess.Popen(
-        ["python", "transcribe_demo.py", "--non_english", "--model", "small"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,  # Line buffered, so we can read output line by line
-        universal_newlines=True  # Ensure newline conversion
-    )
-
-    #Thread(target=update_text_ar, args=(runningProcess,), daemon=True).start()
-
-def endProcess():
-    global runningProcess
-    if runningProcess is not None:
-        stop_flag.set()
-        runningProcess.terminate()
-        runningProcess.wait()
-        runningProcess = None
-        print('\nStopped listening.')
-        buttonEng.configure(state='normal')
-        buttonAr.configure(state='normal')
-        buttonEng.configure(border_width=0)
-        buttonAr.configure(border_width=0)
-        transcriptionBox.delete(1.0, 'end')
-    else:
-        print('Transcription already stopped.')
-
-customtkinter.set_appearance_mode('dark')
-customtkinter.set_default_color_theme('dark-blue')
-root = customtkinter.CTk()
-root.geometry('500x350')
-
-frame = customtkinter.CTkFrame(master=root)
-frame.pack(pady=20, padx=60, fill='both', expand=True)
-
-label = customtkinter.CTkLabel(master=frame, text='Select transcription language.', font=('',20))
-label.pack(pady=10, padx=10)
-
-buttonEng = customtkinter.CTkButton(master=frame, text='English', command=runEnglishTranscription, border_color='red', border_width=0)
-buttonEng.pack(pady=10, padx=10)
-
-buttonAr = customtkinter.CTkButton(master=frame, text='Arabic', command=runArabicTranscription, border_color='red', border_width=0)
-buttonAr.pack(pady=10, padx=10)
-
-buttonStop = customtkinter.CTkButton(master=frame, text='Stop transcription', command=endProcess)
-buttonStop.pack(pady=10, padx=10)
-
-transcriptionBox = customtkinter.CTkTextbox(master=frame)
-transcriptionBox.pack(pady=10, padx=10, fill = 'both')
-
-'''
-transcriptionBox.insert(1.0, ' ' + ' '.join(reversed('السلام عليكم'.split(' '))))
-transcriptionBox.insert(1.0, ' ' + ' '.join(reversed('كيف الحال'.split(' '))))
-transcriptionBox.insert(1.0, ' ' + ' '.join(reversed('انا اسمي احمد'.split(' '))))
-'''
 
 if __name__ == '__main__':
-    root.mainloop()
+    transcriptionApp().run()
